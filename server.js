@@ -16,16 +16,9 @@ app.use(express.json());
 
 // Increase the timeout for the MongoDB connection
 const connectWithRetry = () => {
-  mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-  }).then(() => {
-    console.log('MongoDB is connected');
-  }).catch(err => {
-    console.log('MongoDB connection unsuccessful, retry after 5 seconds.', err);
-    setTimeout(connectWithRetry, 5000);
-  });
+  mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('MongoDB is connected'))
+    .catch(err => console.error('MongoDB connection error:', err));
 };
 
 connectWithRetry();
@@ -84,7 +77,11 @@ app.delete('/todos/:id', async (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).send('Something broke!');
+  res.status(500).send('Something went wrong!');
+});
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 });
 
 module.exports = app;
