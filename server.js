@@ -6,13 +6,29 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: '*', // Be cautious with this in production
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type']
+}));
+
 app.use(express.json());
 
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+// Increase the timeout for the MongoDB connection
+const connectWithRetry = () => {
+  mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+  }).then(() => {
+    console.log('MongoDB is connected');
+  }).catch(err => {
+    console.log('MongoDB connection unsuccessful, retry after 5 seconds.', err);
+    setTimeout(connectWithRetry, 5000);
+  });
+};
+
+connectWithRetry();
 
 const todoSchema = new mongoose.Schema({
   text: String,
@@ -29,9 +45,10 @@ app.get('/', (req, res) => {
 
 app.get('/todos', async (req, res) => {
   try {
-    const todos = await Todo.find();
+    const todos = await Todo.find().limit(100); // Limit the number of todos returned
     res.json(todos);
   } catch (error) {
+    console.error('Error fetching todos:', error);
     res.status(500).json({ message: error.message });
   }
 });
@@ -62,6 +79,12 @@ app.delete('/todos/:id', async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Something broke!');
 });
 
 module.exports = app;
