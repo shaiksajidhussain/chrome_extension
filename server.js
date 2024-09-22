@@ -6,39 +6,36 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors({
-  origin: '*', // Be cautious with this in production
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type']
-}));
-
+app.use(cors());
 app.use(express.json());
 
-// Increase the timeout for the MongoDB connection
-const connectWithRetry = () => {
-  mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('MongoDB is connected'))
-    .catch(err => console.error('MongoDB connection error:', err));
-};
+console.log('Connecting to MongoDB...');
+mongoose.connect(process.env.MONGODB_URI, {
+  serverSelectionTimeoutMS: 5000,
+})
+.then(() => console.log('MongoDB connected'))
+.catch(err => console.error('MongoDB connection error:', err));
 
-connectWithRetry();
-
-const todoSchema = new mongoose.Schema({
+const Todo = mongoose.model('Todo', {
   text: String,
   date: String,
   label: String,
   pinned: Boolean,
 });
 
-const Todo = mongoose.model('Todo', todoSchema);
-
 app.get('/', (req, res) => {
   res.send('This is a todo app');
 });
 
 app.get('/todos', async (req, res) => {
+  console.log('GET /todos request received');
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 20;
+  const skip = (page - 1) * limit;
+
   try {
-    const todos = await Todo.find().limit(100); // Limit the number of todos returned
+    const todos = await Todo.find().skip(skip).limit(limit);
+    console.log(`Found ${todos.length} todos`);
     res.json(todos);
   } catch (error) {
     console.error('Error fetching todos:', error);
@@ -47,11 +44,14 @@ app.get('/todos', async (req, res) => {
 });
 
 app.post('/todos', async (req, res) => {
-  const todo = new Todo(req.body);
+  console.log('POST /todos request received', req.body);
   try {
-    const newTodo = await todo.save();
-    res.status(201).json(newTodo);
+    const todo = new Todo(req.body);
+    await todo.save();
+    console.log('Todo saved:', todo);
+    res.status(201).json(todo);
   } catch (error) {
+    console.error('Error creating todo:', error);
     res.status(400).json({ message: error.message });
   }
 });
@@ -77,11 +77,24 @@ app.delete('/todos/:id', async (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).send('Something went wrong!');
+  res.status(500).send('Something broke!');
 });
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
+});
+
+app.post('/todos/bulk', async (req, res) => {
+  console.log('POST /todos/bulk request received');
+  try {
+    const todos = req.body;
+    const result = await Todo.insertMany(todos);
+    console.log(`${result.length} todos saved`);
+    res.status(201).json(result);
+  } catch (error) {
+    console.error('Error creating todos:', error);
+    res.status(400).json({ message: error.message });
+  }
 });
 
 module.exports = app;
